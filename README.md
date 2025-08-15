@@ -1,318 +1,254 @@
 <?php
-session_start();
-require_once '../config.php';
+include '../config.php';  // ควรอยู่ก่อน header เพื่อให้ $conn พร้อมใช้
 include 'header.php';
-
-$typeFilter = $_GET['type'] ?? '';
-$search = $_GET['search'] ?? '';
-
-$sql = "SELECT * FROM monks WHERE 1";
-$params = [];
-
-if (!empty($typeFilter)) {
-    $sql .= " AND type = ?";
-    $params[] = $typeFilter;
-}
-if (!empty($search)) {
-    $sql .= " AND (first_name LIKE ? OR last_name LIKE ?)";
-    $searchTerm = "%$search%";
-    $params[] = $searchTerm;
-    $params[] = $searchTerm;
-}
-
-// แสดงພຣະก่อนສາມະເນນ
-$sql .= " ORDER BY 
-  CASE 
-    WHEN type = 'ພຣະ' THEN 0
-    WHEN type = 'ສາມະເນນ' THEN 1
-    ELSE 2
-  END,
-  first_name ASC";
-
-$stmt = $conn->prepare($sql);
-
-if (count($params)) {
-    $types = str_repeat("s", count($params));
-    $stmt->bind_param($types, ...$params);
-}
-
-$stmt->execute();
-$result = $stmt->get_result();
-$totalMonks = $result->num_rows;
-$isLoggedIn = isset($_SESSION['user_id']); // ตรวจสอบว่ามีการ login อยู่ไหม
 ?>
 
-<!-- SweetAlert2 -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <style>
-    body {
-        background: linear-gradient(135deg, #fafafa 0%, #f8f9fa 100%);
-        min-height: 100vh;
-    }
-
-    .page-header {
-        background: white;
-        border-radius: 16px;
-        padding: 2.5rem;
-        margin-bottom: 30px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid rgba(0,0,0,0.08);
-        text-align: center;
-    }
-
-    .page-title {
-        background: linear-gradient(45deg, #B8860B, #DAA520, #FFD700);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        font-weight: 700;
-        font-size: 2.2rem;
-        margin-bottom: 1rem;
-    }
-
-    .page-subtitle {
-        color: #666;
-        font-size: 1.1rem;
-        margin: 0;
-    }
-
-    .stats-card {
-        background: linear-gradient(135deg, white 0%, rgba(255, 215, 0, 0.02) 100%);
-        border-radius: 16px;
-        padding: 25px;
-        margin-bottom: 30px;
-        border: 1px solid rgba(218, 165, 32, 0.2);
-        box-shadow: 0 4px 20px rgba(218, 165, 32, 0.1);
-        display: flex;
-        align-items: center;
-        gap: 20px;
-    }
-
-    .stats-icon {
-        background: linear-gradient(135deg, #DAA520 0%, #FFD700 100%);
-        color: white;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-        box-shadow: 0 4px 15px rgba(218, 165, 32, 0.3);
-    }
-
-    .stats-text {
-        font-size: 1.2rem;
-        color: #333;
-        margin: 0;
-        font-weight: 500;
-    }
-
-    .stats-number {
-        color: #B8860B;
-        font-size: 1.5rem;
-        font-weight: 700;
-    }
-
-    .modern-table-container {
-        background: white;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border: 1px solid rgba(0,0,0,0.08);
-    }
-
-    .modern-table thead {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    }
-
-    .modern-table th,
-    .modern-table td {
-        text-align: center;
-        padding: 20px 15px;
-        font-size: 0.95rem;
-        color: #495057;
-        vertical-align: middle;
-        border: none;
-    }
-
-    .modern-table th {
-        font-weight: 600;
-        border-bottom: 2px solid #DAA520;
-    }
-
-    .modern-table tbody tr:hover {
-        background: linear-gradient(135deg, #fafafa 0%, rgba(255, 215, 0, 0.03) 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        transition: all 0.3s ease;
-    }
-
-    .row-number {
-        background: linear-gradient(135deg, #DAA520 0%, #FFD700 100%);
-        color: white;
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        font-size: 0.9rem;
-        margin: 0 auto;
-        box-shadow: 0 2px 8px rgba(218, 165, 32, 0.2);
-    }
-
-    .monk-photo {
-        width: 80px;
-        height: 100px;
-        object-fit: cover;
-        border-radius: 12px;
-        border: 2px solid #f1f3f4;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
-    }
-
-    .monk-photo:hover {
-        transform: scale(1.05);
-        border-color: #DAA520;
-    }
-
-    .years-badge {
-        background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        display: inline-block;
-        box-shadow: 0 2px 8px rgba(23, 162, 184, 0.2);
-    }
-
-    .no-data {
-        text-align: center;
-        padding: 60px 20px;
-        color: #666;
-        font-size: 1.1rem;
-    }
-
-    .no-data i {
-        font-size: 2.5rem;
-        color: #ddd;
-        margin-bottom: 15px;
-        display: block;
-    }
-
-    @media (max-width: 768px) {
-        .page-header { padding: 2rem 1.5rem; }
-        .page-title { font-size: 1.8rem; }
-        .stats-card { flex-direction: column; text-align: center; gap: 15px; }
-        .monk-photo { width: 60px; height: 80px; }
-        .modern-table th, .modern-table td { padding: 15px 10px; font-size: 0.9rem; }
-        .stats-icon { width: 50px; height: 50px; font-size: 1.2rem; }
-    }
-</style>
-
-<div class="container my-5">
-    <div class="page-header">
-        <h2 class="page-title"><i class="fas fa-users me-2"></i>ພຣະສົງໃນວັດ</h2>
-        <p class="page-subtitle">ຄົ້ນຫາ ຫຼື ກອງຂໍ້ມູນຕາມປະເພດ</p>
-    </div>
-
-    <form method="GET" class="row mb-4 g-2">
-        <div class="col-md-4">
-            <input type="text" name="search" class="form-control" placeholder="ຄົ້ນຫາຊື່/ນາມສະກຸນ" value="<?= htmlspecialchars($search) ?>">
-        </div>
-        <div class="col-md-3">
-            <select name="type" class="form-select">
-                <option value="">-- ທຸກສະຖານະ --</option>
-                <option value="ພຣະ" <?= $typeFilter == 'ພຣະ' ? 'selected' : '' ?>>ພຣະ</option>
-                <option value="ສາມະເນນ" <?= $typeFilter == 'ສາມະເນນ' ? 'selected' : '' ?>>ສາມະເນນ</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <button class="btn btn-warning w-100"><i class="fas fa-search me-1"></i>ຄົ້ນຫາ</button>
-        </div>
-        <div class="col-md-3">
-            <a href="member.php" class="btn btn-outline-secondary w-100">ເລີ່ມໃໝ່</a>
-        </div>
-    </form>
-
-    <div class="modern-table-container">
-        <div class="table-responsive">
-            <table class="table modern-table">
-                <thead>
-                    <tr>
-                        <th>ລຳດັບ</th>
-                        <th>ຮູບ</th>
-                        <th>ສະຖານະ</th>
-                        <th>ຊື່</th>
-                        <th>ນາມສະກຸນ</th>
-                        <th>ວັນທີບວດ</th>
-                        <th>ພັນສາ</th>
-                        <th>ລາຍລະອຽດ</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $i = 1;
-                    if ($totalMonks > 0) {
-                        while ($row = $result->fetch_assoc()) {
-                            $ordination = new DateTime($row['ordination_date']);
-                            $today = new DateTime();
-                            $years = $today->diff($ordination)->y;
-
-                            $image = !empty($row['image_path']) ? '../uploads/' . $row['image_path'] : 'https://via.placeholder.com/80x100/cccccc/666666?text=No+Image';
-                            $typeText = match($row['type']) {
-                                'ພຣະ' => 'ພຣະ',
-                                'ສາມະເນນ' => 'ສາມະເນນ',
-                                default => 'ບໍ່ລະບຸ'
-                            };
-
-                            // ✅ ถ้ายังไม่ล็อกอิน แสดงปุ่มแจ้งเตือน
-                            if ($isLoggedIn) {
-    $detailBtn = "<a href='monk_detail.php?id={$row['monk_id']}' class='btn btn-sm btn-outline-primary'>
-                    <i class='fas fa-eye'></i> ດູລາຍລະອຽດ
-                </a>";
-} else {
-    $detailBtn = "<button onclick=\"Swal.fire({
-                        icon: 'warning',
-                        title: 'ກະລຸນາລັອກອິນກ່ອນ',
-                        text: 'ເຂົ້າລະບົບເພື່ອເບິ່ງລາຍລະອຽດຂອງພຣະ',
-                        confirmButtonText: 'ເຂົ້າລະບົບ',
-                        showCancelButton: true,
-                        cancelButtonText: 'ຍົກເລີກ'
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            window.location = '../login.php';
-                        }
-                    });\" 
-                    class='btn btn-sm btn-outline-secondary'>
-                    <i class='fas fa-lock'></i> ລ໋ອກອິນກ່ອນ
-                </button>";
+/* Modern Clean Styles */
+.hero-section {
+    background: linear-gradient(135deg, 
+        rgba(255, 215, 0, 0.08) 0%, 
+        rgba(255, 255, 255, 0.95) 100%);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    backdrop-filter: blur(10px);
 }
 
+.gradient-text {
+    background: linear-gradient(45deg, #B8860B, #DAA520, #FFD700);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
+}
 
-                            echo "<tr>
-                                <td><div class='row-number'>{$i}</div></td>
-                                <td><img src='{$image}' class='monk-photo'></td>
-                                <td>{$typeText}</td>
-                                <td>{$row['first_name']}</td>
-                                <td>{$row['last_name']}</td>
-                                <td>" . date("d/m/Y", strtotime($row['ordination_date'])) . "</td>
-                                <td><span class='years-badge'>{$years} ພັນສາ</span></td>
-                                <td>{$detailBtn}</td>
-                            </tr>";
-                            $i++;
-                        }
-                    } else {
-                        echo "<tr><td colspan='8' class='no-data'><i class='fas fa-users'></i> ບໍ່ພົບຂໍ້ມູນ</td></tr>";
-                    }
-                    ?>
-                </tbody>
-            </table>
+.modern-card {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+}
+
+.modern-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.event-item {
+    background: linear-gradient(135deg, white 0%, rgba(255, 215, 0, 0.02) 100%);
+    border-radius: 12px;
+    border-left: 4px solid #DAA520;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: all 0.3s ease;
+}
+
+.event-item:hover {
+    transform: translateX(8px);
+    box-shadow: 0 4px 16px rgba(218, 165, 32, 0.15);
+    border-left-width: 6px;
+}
+
+.image-gallery {
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.image-gallery:hover {
+    transform: scale(1.02);
+}
+
+.section-title {
+    font-size: 2.2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+    position: relative;
+}
+
+.section-title::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, #DAA520, #FFD700);
+    margin: 16px auto;
+    border-radius: 2px;
+}
+
+.icon-modern {
+    color: #DAA520;
+    margin-right: 12px;
+    font-size: 1.2em;
+}
+
+.text-gold {
+    color: #B8860B;
+    font-weight: 600;
+}
+
+.btn-modern {
+    background: linear-gradient(135deg, #DAA520 0%, #FFD700 100%);
+    border: none;
+    border-radius: 25px;
+    padding: 12px 30px;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(218, 165, 32, 0.2);
+}
+
+.btn-modern:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(218, 165, 32, 0.3);
+    color: white;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .section-title {
+        font-size: 1.8rem;
+    }
+    
+    .hero-section {
+        padding: 2rem !important;
+    }
+    
+    .event-item:hover {
+        transform: translateX(4px);
+    }
+}
+</style>
+
+
+<div class="container my-5">
+    <!-- Hero Section -->
+    <section class="hero-section p-5 mb-5" data-aos="fade-up">
+        <div class="text-center">
+            <h1 class="display-4 gradient-text mb-4">
+                <i class="fas fa-temple icon-modern"></i>
+                ຍິນດີຕ້ອນຮັບສູ່ ວັດສະພັງໝໍ້ ໄຊຍະຣາມ
+            </h1>
+            <p class="lead text-muted mb-4">
+                <i class="fas fa-lotus icon-modern"></i>
+               "ຄວາມພະຍາຍາມບໍ່ເຄີຍທໍລະຍົດຜູ້ໃດ."
+            <div class="row justify-content-center">
+                <div class="col-lg-8">
+                    <img src="images/IMG_7949.JPG" class="img-fluid rounded-4 shadow" alt="ຮູບພາບວັດສະພັງໝໍ້ ໄຊຍະຣາມ" style="max-height: 400px; object-fit: cover; width: 100%;">
+                </div>
+            </div>
         </div>
-    </div>
+    </section>
+
+    <!-- History Section -->
+    <section class="mb-5" data-aos="fade-up">
+        <div class="modern-card p-5 shadow-lg rounded-4 bg-light">
+            <h2 class="section-title gradient-text text-center mb-4">
+                <i class="fas fa-landmark icon-modern me-2"></i>
+                ປະຫວັດວັດສະພັງໝໍ້
+            </h2>
+            <div class="row">
+                <div class="col-lg-10 mx-auto">
+                    <p class="fs-5 lh-lg text-dark text-indent">ວັດສະພັງໝໍ້ ເມືອງໄຊເສດຖາ ນະຄອນຫລວງວຽງຈັນ
+
+ວັດສະພັງຫມໍ້ ເປັນວັດທີສຳຄັນວັດຫນຶ່ງຂອງເມືອງວຽງຈັນໃນອະດິດ ເພາະເມື່ອກ່ອນບັນດາເຈົ້ານາຍ ຫລືຂ້າຣາຊະການຊັ້ນຜູ້ໃຫຍ່ ກ່ອນຈະໄດ້ຮັບຕຳແຫນ່ງໃຫ້ປົກຄອງບ້ານເມືອງ ກໍ່ຈະໄດ້ມເອົານ້ຳເພື່ອໄປເຮັດພິທີພິພັດສັດຈະຍາບັນ ( ນ້ຳສາບານ )
+
+ບັນດາໜອງສະພັງ ຕ່າງໆ ທີ່ມີຊື່ຂຶ້ນຕົ້ນວ່າ ເຊັ່ນ : ສະພັງໜໍ້ , ສະພັງເມີກ, ສະພັງເລນ ປະຈຸບັນນີ້ເຫລືອແຕ່ 3 ສະພັງ ສະໄຫມກ່ອນນັ້ນມີຫລາຍໆ ເຊັ່ນ : ສະພັງມ່ວງ ( ຜູ້ເຖົ້າເພິ່ນວ່າຢູ່ແຖວໂຮງແຮມຣາຊວົງ ປະຈຸບັນແມ່ນເປັນຕຶກທີສູງທີ່ສຸດໃນປະເທດລາວເຮົາ ແຕ່ຍັງສ້າງບໍ່ທັນແລ້ວເທື່ອ ) ບັນດາສະພັງ ຫລືໜອງເຫລົ່ານີ້ ກ່ຽວພັນກັບເລື່ອງຂອງພຣະຍານາກ ທັງເປັນບ່ອນເຂັດຍຳທັງນັ້ນ ແລະໃນອະດິດເກົ່າກ່ອນ ບັນດາຂ້າຣາຊການ ຫລືເຈົ້ານາຍຂັ້ນແລະຊັ້ນຕ່າງໆ ກ່ອນຈະເຂົ້າຮັບຕຳແຫນ່ງຕ່າງ ເພິ່ນກໍ່ຈະນຳເອົານ້ຳຈາກ 3 ສະພັງ ( ສະພັງເລນ, ສະພັງໝໍ້, ສະພັງເມີກ ) ແລະນ້ຳຈາກ 9 ວັດ ທີ່ສຳຄັນໃນເມືອງວຽງຈັນທນ໌ ເຊັ່ນ : ວັດອົງຕື້, ອິນແປງ, ມີໄຊ, ວັດຈັນ, ຫາຍໂສກ, ຊຽງຍີນ, ສຼີສະເກດ, ເກົ້າຍອດ, ເພຽວັດ ເປັນຕົ້ນ ເພື່ອນຳເອົາໄປເຮັດນ້ຳ ພິພັດສັດຈະຍາບັນ ( ນ້ຳສາບານ ) ພິທີດັ່ງກ່າວ ແມ່ນຈັດຂຶ້ນທີ່ ວັດອົງຕື້ ມະຫາວິຫາຣ ຫລືວັດສີສະເກດ ເພື່ອໃຫ້ບັນດາເຈົ້ານາຍ ແລະຣາຊການຕ່າງໆ ທີ່ຈະຮັບຕ່ຳແຫນ່ງທັງຫລາຍ ດື່ມນ້ຳນີ້ຮ່ວມກັນ ນ້ຳຕ່າງໆນີ້ກໍ່ຈະມີດາບ ມີຫ້ອກ ມີງ້າວ ຈຸ່ມລົງນ້ຳ ເພື່ອເປັນການສາບແຊ່ງ 
+ຖ້າເຮັດບໍ່ດີກັບຊາດ ບ້ານເມືອງ ຫລືກັບປະຊາຊົນ ຖ້າເຮັດດີ ຊື່ສັດຕໍ່ປະເທດຊາດ ບ້ານເມືອງ ກໍ່ຂໍໃຫ້ຈະເຣິນຮຸ່ງເຮືອງໄປຫນ້າ ...</p>
+                </div>
+            </div>
+            <div class="text-center mt-5">
+                <a href="history.php" class="btn btn-outline-warning btn-lg px-5 py-3 rounded-pill shadow-sm">
+                    <i class="fas fa-expand me-2"></i> ປະຫວັດວັດເພີ່ມເຕີມ
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Events Section -->
+    <section class="mb-5" data-aos="fade-up">
+        <div class="modern-card p-5">
+            <h2 class="section-title gradient-text">
+                <i class="fas fa-calendar-check icon-modern"></i>
+                ຂ່າວສານງານບຸນປະເພນີຕ່າງໆ
+            </h2>
+
+            <?php
+            $stmt = $conn->prepare("SELECT title, event_date, description FROM temple_events ORDER BY event_date DESC LIMIT 5");
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($result->num_rows > 0):
+                while ($event = $result->fetch_assoc()):
+            ?>
+                <div class="event-item">
+                    <h5 class="text-gold mb-2">
+                        <i class="fas fa-star icon-modern text-warning"></i>
+                        <?= htmlspecialchars($event['title']) ?>
+                    </h5>
+                    <small class="text-muted d-block mb-3">
+                        <i class="fas fa-calendar-alt icon-modern text-primary"></i>
+                        <?= date("d/m/Y", strtotime($event['event_date'])) ?>
+                    </small>
+                    <p class="mb-0 lh-lg text-dark"><?= nl2br(htmlspecialchars($event['description'])) ?></p>
+                </div>
+            <?php
+                endwhile;
+            else:
+            ?>
+                <div class="text-center py-5">
+                    <i class="fas fa-calendar-times text-muted" style="font-size: 3rem; opacity: 0.3;"></i>
+                    <p class="text-muted mt-3 fs-5">ຍັງບໍ່ມີກິດຈະກຳໃໝ່ໃນຂະນະນີ້</p>
+                </div>
+            <?php endif;
+            $stmt->close();
+            ?>
+
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section data-aos="fade-up">
+        <div class="modern-card p-5">
+            <h2 class="section-title gradient-text">
+                <i class="fas fa-images icon-modern"></i>
+                ຮູບພາບບັນຍາກາດພາຍໃນວັດ
+            </h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="image-gallery position-relative">
+                        <img src="images/gallery2.jpg" class="img-fluid w-100" alt="ບັນຍາກາດພາຍໃນວັດ" style="height: 250px; object-fit: cover;">
+                        <div class="position-absolute bottom-0 start-0 end-0 p-3" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                            <small class="text-white fw-medium">ບັນຍາກາດພາຍໃນວັດ</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="image-gallery position-relative">
+                        <img src="images/IMG_7949.JPG" class="img-fluid w-100" alt="ບັນຍາກາດພາຍໃນວັດ" style="height: 250px; object-fit: cover;">
+                        <div class="position-absolute bottom-0 start-0 end-0 p-3" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                            <small class="text-white fw-medium">ບັນຍາກາດພາຍໃນວັດ</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="image-gallery position-relative">
+                        <img src="images/gallery1.jpg" class="img-fluid w-100" alt="ບັນຍາກາດພາຍໃນວັດ" style="height: 250px; object-fit: cover;">
+                        <div class="position-absolute bottom-0 start-0 end-0 p-3" style="background: linear-gradient(transparent, rgba(0,0,0,0.6));">
+                            <small class="text-white fw-medium">ບັນຍາກາດພາຍໃນວັດ</small>
+                        </div>
+                    </div>
+                </div>
+                <!-- รูปอื่นๆ เหมือนเดิม -->
+            </div>
+        </div>
+    </section>
+
 </div>
 
-<?php include 'footer.php'; ?>
+<?php
+$conn->close(); // ปิด DB connection
+include 'footer.php';
+?>
